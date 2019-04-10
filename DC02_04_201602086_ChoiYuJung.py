@@ -8,19 +8,21 @@ from io import StringIO
 import alsaaudio
 import colorama
 import numpy as np
+import pyaudio
 
 from reedsolo import RSCodec, ReedSolomonError
 from termcolor import cprint
 from pyfiglet import figlet_format
 
-HANDSHAKE_START_HZ = 8192
-HANDSHAKE_END_HZ = 8192 + 512
+HANDSHAKE_START_HZ = 4100
+HANDSHAKE_END_HZ = 6160
 
 START_HZ = 1024
 STEP_HZ = 256
 BITS = 4
 
 FEC_BYTES = 4
+
 
 def stereo_to_mono(input_file, output_file):
     inp = wave.open(input_file, 'r')
@@ -64,12 +66,14 @@ def dominant(frame_rate, chunk):
     #print("peak_coeff:",peak_coeff)
     peak_freq = freqs[peak_coeff]
     #print("peak_freq",peak_freq)
+    print(abs(peak_freq * frame_rate))
     return abs(peak_freq * frame_rate) # in Hz
 
 def match(freq1, freq2):
     return abs(freq1 - freq2) < 20
 
 def decode_bitchunks(chunk_bits, chunks):
+    print(chunks)
     out_bytes = []
 
     next_read_chunk = 0
@@ -103,7 +107,7 @@ def decode_bitchunks(chunk_bits, chunks):
         if next_read_bit >= chunk_bits:
             next_read_chunk += 1
             next_read_bit -= chunk_bits
-    #print(out_bytes)
+   # print(out_bytes)
 
     return out_bytes
 
@@ -123,17 +127,40 @@ def decode_file(input_file, speed):
         print("{} => {}".format(offset, dom))
         offset += 1
 
+arr_chunks = []
 def extract_packet(freqs):
+    global arr_chunks
     freqs = freqs[::2]
     bit_chunks = [int(round((f - START_HZ) / STEP_HZ)) for f in freqs]
     bit_chunks = [c for c in bit_chunks[1:] if 0 <= c < (2 ** BITS)]
+    arr_chunks = bit_chunks[18:]
+    print("arr_chunks",arr_chunks)
     return bytearray(decode_bitchunks(BITS, bit_chunks))
 
 def display(s):
     cprint(figlet_format(s.replace(' ', '   '), font='doom'), 'yellow')
 
-def listen_linux(frame_rate=44100, interval=0.1):
+def write_linux():
+    print("---a---")
+    fs=44100 #frequency
+    tlen=1/fs  #interval time
+    ts=0.5  #end of time
+    t=np.arange(0,tlen,ts) #time array
+    sample = []
+    sample.append(HANDSHAKE_START_HZ)
+    print("arr_chunks2",arr_chunks)
+    for i in range(0,len(arr_chunks)):
+        sample.append((arr_chunks[i] >> 4)*STEP_HZ+START_HZ)
+        sample.append((arr_chunks[i] & 0xf)*STEP_HZ+START_HZ)
+    sample.append(HANDSHAKE_END_HZ)
+    print(sample)
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paFloat32,channels=1,rate=44100,output=True)
+    for i in range(0,len(sample)):
+        samples = np.sin(2*np.pi*sample[i]/44100*t).astype(np.float32)
+        stream.write(samples)
 
+def listen_linux(frame_rate=44100, interval=0.1):
     mic = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL)
     mic.setchannels(1)
     mic.setrate(44100)
@@ -161,8 +188,14 @@ def listen_linux(frame_rate=44100, interval=0.1):
             try:
                 byte_stream = RSCodec(FEC_BYTES).decode(byte_stream)
                 byte_stream = byte_stream.decode("utf-8")
-                display(byte_stream)
-                display("")
+                stu_num = byte_stream[:9]
+                print("stu_num",stu_num)
+                #byte_stream = byte_stream[9:]
+                #print("byte_stream",byte_stream)
+                if int(stu_num)==201602086 :
+                    display(byte_stream[9:])
+                    display("")
+                    write_linux()
             except ReedSolomonError as e:
                 print("{}: {}".format(e, byte_stream))
 
