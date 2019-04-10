@@ -66,7 +66,7 @@ def dominant(frame_rate, chunk):
     #print("peak_coeff:",peak_coeff)
     peak_freq = freqs[peak_coeff]
     #print("peak_freq",peak_freq)
-    print(abs(peak_freq * frame_rate))
+    #print(abs(peak_freq * frame_rate))
     return abs(peak_freq * frame_rate) # in Hz
 
 def match(freq1, freq2):
@@ -142,10 +142,9 @@ def display(s):
 
 def write_linux():
     print("---a---")
-    fs=44100 #frequency
-    tlen=1/fs  #interval time
-    ts=0.5  #end of time
-    t=np.arange(0,tlen,ts) #time array
+    fs=44100
+    ts=0.9  
+    t=np.arange(fs*ts)
     sample = []
     sample.append(HANDSHAKE_START_HZ)
     print("arr_chunks2",arr_chunks)
